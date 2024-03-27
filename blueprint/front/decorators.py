@@ -1,4 +1,5 @@
-from flask import g, redirect, url_for
+from flask import g
+from utils import restful
 # 登陆装饰器
 # 检测是否登陆状态
 
@@ -6,9 +7,9 @@ from flask import g, redirect, url_for
 def login_required(func):
     def inner(*args, **kwargs):
         if hasattr(g, 'user'):
-            func(*args, **kwargs)
+            return func(*args, **kwargs)
         else:
-            return redirect(url_for('login'))
+            return restful.params_error(message="请先登陆！")
 
     inner.__name__ = func.__name__
     return inner

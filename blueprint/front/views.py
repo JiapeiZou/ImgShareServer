@@ -161,7 +161,6 @@ def upload_image():
         # 存放路径
         image_path = os.path.join(current_app.config['POST_IMAGE_SAVE_PATH'], filename)
         image.save(image_path)
-
         return restful.ok(data={"filename": filename})
     else:
         message = form.errors
