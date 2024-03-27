@@ -10,7 +10,7 @@ from hashlib import md5
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from flask_avatars import Identicon
 from sqlalchemy import or_
-
+from .decorators import login_required
 
 bp = Blueprint('front', __name__, url_prefix='/api')
 
@@ -71,8 +71,14 @@ def register_page():
     # 获取表单数据-验证数据-存入数据库
     form = RegisterForm(request.form)
     if form.validate():
-        username = form.username.data
         phone_number = form.phone_number.data
+        user = UserModel.query.filter_by(phone_number=phone_number).first()
+        if user:  # 是否已经存在此号码
+            return restful.params_error(message='该号码已被注册！')
+        username = form.username.data
+        user = UserModel.query.filter_by(username=username).first()
+        if user:
+            return restful.params_error(message="该用户名已被注册！")
         password = form.password.data
         identicon = Identicon()  # 自动生成头像
         filenames = identicon.generate(text=md5(phone_number.encode("utf-8")).hexdigest())
@@ -103,6 +109,7 @@ def register_page():
 
 #  上传用户头像
 @bp.post('/avatar/upload')
+@login_required
 def upload_avatar():
     #  获取数据 -》form验证 -》存储在数据库
     print(request.files)
@@ -128,6 +135,7 @@ def upload_avatar():
 
 #  用户个性信息修改
 @bp.post('/user/setting')
+@login_required
 def user_setting():
     form = EditSettingForm(request.form)
     if form.validate():
@@ -141,6 +149,7 @@ def user_setting():
 
 #  上传图片
 @bp.post('/upload/image')
+@login_required
 def upload_image():
     form = UploadAvatarForm(request.files)
     if form.validate():
@@ -202,12 +211,15 @@ def index():
     # [{'username': '小红', 'title': '自然', 'detail': '生活', 'filename': ['4b8c2fe.jpg', '71487.jpeg']},
     # {'username': 'shu 属鼠', 'title': '油画', 'detail': '手绘', 'filename': ['b40810.jpg', 'ef5376a9b.JPG']},
     # {'username': 'shu 属鼠', 'title': '表情包', 'detail': '可爱手绘', 'filename': ['d43af.png', 'dd86.png']}]
-    for image_text in image_text_s:
-        images = image_text.images
-        # 处理数据结构的自定义函数
-        item = export_data(image_text, images)
-        image_info_list.append(item)
-    return restful.ok(data=image_info_list)
+    if len(image_text_s) > 0:
+        for image_text in image_text_s:
+            images = image_text.images
+            # 处理数据结构的自定义函数
+            item = export_data(image_text, images)
+            image_info_list.append(item)
+        return restful.ok(data=image_info_list)
+    else:
+        return restful.params_error(message="暂无数据！")
 
 
 # 用户详情页展示（当前用户的全部照片）
@@ -242,6 +254,7 @@ def user_picture(user_id):
 
 # 删除图片专辑
 @bp.post('/delete/img')
+@login_required
 def delete_post_image():
     post_id = request.form.get('id')
     if not post_id:
@@ -257,6 +270,7 @@ def delete_post_image():
 
 # 修改图片专辑
 @bp.post('/update/img')
+@login_required
 def update_post_image():
     print(request.form)
     form = EditImageText(request.form)

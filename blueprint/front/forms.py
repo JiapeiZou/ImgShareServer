@@ -44,7 +44,7 @@ class EditSettingForm(Form):
 class UploadImageText(Form):
     # filenames = FieldList(StringField('Filename', validators=[Length(max=60, message='文件名不能超过60个字符！')]),
     #                  min_entries=1, max_entries=10)
-    title = StringField(validators=[Length(min=1, max=10, message='请输入正确长度的标题！')])
+    title = StringField(validators=[Length(min=1, max=20, message='请输入正确长度的标题！')])
     detail = StringField(validators=[Length(min=1, max=200, message='请输入正确长度的描述！')])
 
 

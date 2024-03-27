@@ -9,4 +9,6 @@ def login_required(func):
             func(*args, **kwargs)
         else:
             return redirect(url_for('login'))
+
+    inner.__name__ = func.__name__
     return inner
