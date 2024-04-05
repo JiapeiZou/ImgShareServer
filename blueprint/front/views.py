@@ -11,6 +11,9 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from flask_avatars import Identicon
 from sqlalchemy import or_
 from .decorators import login_required
+from PIL import Image, ImageFilter  # 获取图片size
+import io
+import base64
 
 bp = Blueprint('front', __name__, url_prefix='/api')
 
@@ -28,9 +31,68 @@ def front_before_request():
         setattr(g, 'user', user)
 
 
-# 格式化处理接口需要的数据
+# 生成图片的缩略图函数
+# def get_blurred_thumbnail(image_bytes):
+#     img = Image.open(io.BytesIO(image_bytes))
+#     img.thumbnail((50, 50))  # 宽度和高度分别为 8 像素的缩略图
+#     blurred_img = img.filter(ImageFilter.GaussianBlur(radius=5))  # 模糊效果
+#     buffered = io.BytesIO()
+#     blurred_img.save(buffered, format="JPEG")
+#     return base64.b64encode(buffered.getvalue()).decode('utf-8')  # 返回：Base64 编码的字符串
+# ---生成图片的缩略图函数---
+def get_blurred_thumbnail(image_bytes, *, w=8, h=8):
+    img = Image.open(io.BytesIO(image_bytes))
+    width, height = img.size
+    new_img = Image.new('RGB', (w, h))
+    region_width = width // w
+    region_height = height // h
+    for i in range(w):
+        for j in range(h):
+            left = i * region_width
+            upper = j * region_height
+            right = left + region_width
+            bottom = upper + region_height
+            region = img.crop((left, upper, right, bottom))
+            avg_color = region.resize((1, 1), resample=Image.LANCZOS).getcolors()[0][1]
+            new_img.putpixel((i, j), avg_color)
+
+    new_img = new_img.filter(ImageFilter.GaussianBlur(radius=1))
+
+    buffered = io.BytesIO()
+    new_img.save(buffered, format='JPEG')
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+
+# 格式化处理接口需要的图片数据
 def export_data(imgtextmodel, imgs):
+    # imgtextmodel => 图片描述模型
+    # imgs => 该模型下 所关联的图片模型的列表
+    # 拼接图片文件名  完整url路径
+    # /Users/jpz/Desktop/flask/flaskProject4/media/img/43af.png
+    image_path = os.path.join(current_app.config['POST_IMAGE_SAVE_PATH'], imgs[0].filename)
+
+    # ---------
+    with open(image_path, 'rb') as f:
+        image_bytes = f.read()  # 读取图片文件到字节序列
+
+    img = Image.open(io.BytesIO(image_bytes))  # 使用PIL Image.open 打开这个字节序列
+    # 检查和转换模式  使用透明背景颜色的图片，否则无法生成缩略图）
+    if img.mode == 'RGBA':
+        img = img.convert('RGB')
+    # 保存转换后的图片到字节流，以便生成缩略图
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG")
+    image_bytes = buffered.getvalue()
+    # 生成模糊缩略图函数
+    small_img = get_blurred_thumbnail(image_bytes)
+    # ---------
+
+    # 打开并处理图片
+    with Image.open(image_path) as img:
+        # 在这里可以获取图片的宽高等信息
+        width, height = img.size
     filenames = [img.filename for img in imgs]
+    # 返回该专辑下的第一张图片的宽，高，缩略图
     item = {
         "id": imgtextmodel.id,
         "username": imgtextmodel.author.username,
@@ -38,6 +100,9 @@ def export_data(imgtextmodel, imgs):
         "user_avatar": imgtextmodel.author.avatar,
         "title": imgtextmodel.title,
         "detail": imgtextmodel.detail,
+        "width": width,
+        "height": height,
+        "small_img": small_img,
         "filename": filenames
     }
     return item
@@ -112,7 +177,6 @@ def register_page():
 @login_required
 def upload_avatar():
     #  获取数据 -》form验证 -》存储在数据库
-    print(request.files)
     form = UploadAvatarForm(request.files)
     if form.validate():
         image = form.image.data
@@ -154,9 +218,9 @@ def upload_image():
     form = UploadAvatarForm(request.files)
     if form.validate():
         image = form.image.data
-        filename = image.filename
-        _, ext = os.path.splitext(filename)
-        # 加密后的图片文件
+        filename = image.filename  # 获取文件名
+        _, ext = os.path.splitext(filename)  # 解构后缀
+        # 给图片重新命名。防止图片重名，加密后的图片文件
         filename = md5((filename + str(time.time())).encode('utf-8')).hexdigest() + ext
         # 存放路径
         image_path = os.path.join(current_app.config['POST_IMAGE_SAVE_PATH'], filename)
@@ -234,15 +298,21 @@ def user_picture(user_id):
     text_list = user.image_text  # 当前用户的详情列表 [<ImageTextModel 8>, <ImageTextModel 9>]
     for text in text_list:
         image_list = text.images  # 详情下图片列表  [<ImageModel 1>, <ImageModel 2>]
-        filenames = [image.filename for image in image_list]
+    #  ----------------
+        item = export_data(text, image_list)
 
+
+    #  ----------------
+        filenames = [image.filename for image in image_list]
         items = {
             "title": text.title,
             "detail": text.detail,
             "filename": filenames,
-            "id": text.id
+            "id": text.id,
+            'width': item['width'],
+            'height': item['height'],
+            'small_img': item['small_img']
         }
-
         user_img_list.append(items)
 
     return restful.ok(data={"avatar": user.avatar,
@@ -331,7 +401,6 @@ def search_username():  # /search/username?username=xxx
     users = UserModel.query.filter(UserModel.username.contains(username)).all()
     if len(users) < 1:  # [<UserModel 8Bg3erTghTdYRSJTqwd9pA>, <UserModel VrovN8QYvZxY6zmyFm7rCP>]
         return restful.params_error('没有找到相关的用户！')
-    print("---user---", users)
     user_info = []
     for user in users:
         item = {
@@ -346,7 +415,6 @@ def search_username():  # /search/username?username=xxx
 # 提交留言
 @bp.post('/send/message')
 def send_message():
-    print("---message---", request.form)
     form = MessageForm(request.form)
     if form.validate():
         msg = form.msg.data

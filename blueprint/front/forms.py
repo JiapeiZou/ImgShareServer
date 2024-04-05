@@ -29,7 +29,7 @@ class LoginForm(Form):
     password = StringField(validators=[Length(min=6, max=20, message='密码不正确！')])
 
 
-# --- 上传头像图片校验 ---
+# --- 上传图片校验 ---
 class UploadAvatarForm(Form):
     image = FileField(validators=[FileAllowed(['jpg', 'png', 'jpeg'], message='图片格式不符合！'),
                                   FileSize(max_size=1024*1024*5, message="图片不超过5M")])

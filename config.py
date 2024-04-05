@@ -25,6 +25,8 @@ SECRET_KEY = 'secret key'
 AVATARS_SAVE_PATH = os.path.join(BASE_DIR, 'media', 'avatars')
 # 帖子图片 存放路径
 POST_IMAGE_SAVE_PATH = os.path.join(BASE_DIR, 'media', 'imgs')
+# 模糊图 存放路径
+BLURRED_IMAGE_SAVE_PATH = os.path.join(BASE_DIR, 'media', 'blurredImg')
 
 # 设置jwt过期时间
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=100)
