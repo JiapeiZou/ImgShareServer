@@ -17,16 +17,11 @@ DB_NAME = "database_learn4"
 DB_URI = "mysql+pymysql://%s:%s@%s:%s/%s?charset=utf8mb4" % (DB_USERNAME, DB_PASSWORD, DB_HOST, DB_POST, DB_NAME)
 
 SQLALCHEMY_DATABASE_URI = DB_URI
-
 # 密钥 CSRF 保护
 SECRET_KEY = 'secret key'
-
 # 头像配置 存放路径
 AVATARS_SAVE_PATH = os.path.join(BASE_DIR, 'media', 'avatars')
 # 帖子图片 存放路径
 POST_IMAGE_SAVE_PATH = os.path.join(BASE_DIR, 'media', 'imgs')
-# 模糊图 存放路径
-BLURRED_IMAGE_SAVE_PATH = os.path.join(BASE_DIR, 'media', 'blurredImg')
-
 # 设置jwt过期时间
 JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=100)
