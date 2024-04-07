@@ -188,7 +188,7 @@ def upload_avatar():
         # 添加图片到文件夹中（路径）
         image_path = os.path.join(current_app.config['AVATARS_SAVE_PATH'], filename)
         image.save(image_path)
-        #
+        #  将用户数据库avatar 替换成新头像
         g.user.avatar = filename
         db.session.commit()
         return restful.ok(data={"filename": filename})
