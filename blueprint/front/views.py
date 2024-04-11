@@ -40,7 +40,17 @@ def front_before_request():
 #     blurred_img.save(buffered, format="JPEG")
 #     return base64.b64encode(buffered.getvalue()).decode('utf-8')  # 返回：Base64 编码的字符串
 # ---生成图片的缩略图函数---
-def get_blurred_thumbnail(image_bytes, *, w=8, h=8):
+def get_blurred_thumbnail(image_path, *, w=8, h=8):
+    with open(image_path, 'rb') as f:
+        image_bytes = f.read()  # 读取图片文件到字节序列
+    img = Image.open(io.BytesIO(image_bytes))  # 使用PIL Image.open 打开这个字节序列
+    # 检查和转换模式  使用透明背景颜色的图片，否则无法生成缩略图）
+    if img.mode == 'RGBA':
+        img = img.convert('RGB')
+    # 保存转换后的图片到字节流，以便生成缩略图
+    buffered = io.BytesIO()
+    img.save(buffered, format="JPEG")
+    image_bytes = buffered.getvalue()
     img = Image.open(io.BytesIO(image_bytes))
     width, height = img.size
     new_img = Image.new('RGB', (w, h))
@@ -57,55 +67,62 @@ def get_blurred_thumbnail(image_bytes, *, w=8, h=8):
             new_img.putpixel((i, j), avg_color)
 
     new_img = new_img.filter(ImageFilter.GaussianBlur(radius=1))
-
-    buffered = io.BytesIO()
-    new_img.save(buffered, format='JPEG')
-    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+    return new_img
 
 
 # 格式化处理接口需要的图片数据
-def export_data(imgtextmodel, imgs):
-    # imgtextmodel => 图片描述模型
-    # imgs => 该模型下 所关联的图片模型的列表
-    # 拼接图片文件名  完整url路径
-    # /Users/jpz/Desktop/flask/flaskProject4/media/img/43af.png
-    image_path = os.path.join(current_app.config['POST_IMAGE_SAVE_PATH'], imgs[0].filename)
+def export_data(img_textmodel, img_s):
+    # img_textmodel => 图片描述模型
+    # img_s => 该模型下 所关联的图片模型的列表
 
-    # ---------
-    with open(image_path, 'rb') as f:
-        image_bytes = f.read()  # 读取图片文件到字节序列
-
-    img = Image.open(io.BytesIO(image_bytes))  # 使用PIL Image.open 打开这个字节序列
-    # 检查和转换模式  使用透明背景颜色的图片，否则无法生成缩略图）
-    if img.mode == 'RGBA':
-        img = img.convert('RGB')
-    # 保存转换后的图片到字节流，以便生成缩略图
-    buffered = io.BytesIO()
-    img.save(buffered, format="JPEG")
-    image_bytes = buffered.getvalue()
-    # 生成模糊缩略图函数
-    small_img = get_blurred_thumbnail(image_bytes)
-    # ---------
-
+    # 该专辑的第一张图片存储路径 "/Users/jpz/Desktop/flask/flaskProject4/media/img/43af.png"
+    image_path = os.path.join(current_app.config['POST_IMAGE_SAVE_PATH'], img_s[0].filename)
+    # 该专辑的第一张图片对应的模糊图存储路径
+    small_img_path = os.path.join(current_app.config['BLURRED_IMAGE_SAVE_PATH'], img_s[0].filename)
+    small_img = None
+    # 检查文件是否存在
+    if os.path.exists(small_img_path):
+        s_img = Image.open(small_img_path)
+        #  将 PIL 图像对象转换为 JPEG 图片字符串
+        buffered = io.BytesIO()
+        s_img.save(buffered, format='JPEG')
+        small_img = base64.b64encode(buffered.getvalue()).decode('utf-8')
+    else:
+        print("Image not found")
     # 打开并处理图片
     with Image.open(image_path) as img:
         # 在这里可以获取图片的宽高等信息
         width, height = img.size
-    filenames = [img.filename for img in imgs]
+    filenames = [img.filename for img in img_s]
     # 返回该专辑下的第一张图片的宽，高，缩略图
     item = {
-        "id": imgtextmodel.id,
-        "username": imgtextmodel.author.username,
-        "user_id": imgtextmodel.author.id,
-        "user_avatar": imgtextmodel.author.avatar,
-        "title": imgtextmodel.title,
-        "detail": imgtextmodel.detail,
+        "id": img_textmodel.id,
+        "username": img_textmodel.author.username,
+        "user_id": img_textmodel.author.id,
+        "user_avatar": img_textmodel.author.avatar,
+        "title": img_textmodel.title,
+        "detail": img_textmodel.detail,
         "width": width,
         "height": height,
+        "filename": filenames,
         "small_img": small_img,
-        "filename": filenames
     }
     return item
+
+    # ---------
+    # with open(image_path, 'rb') as f:
+    #     image_bytes = f.read()  # 读取图片文件到字节序列
+    # img = Image.open(io.BytesIO(image_bytes))  # 使用PIL Image.open 打开这个字节序列
+    # # 检查和转换模式  使用透明背景颜色的图片，否则无法生成缩略图）
+    # if img.mode == 'RGBA':
+    #     img = img.convert('RGB')
+    # # 保存转换后的图片到字节流，以便生成缩略图
+    # buffered = io.BytesIO()
+    # img.save(buffered, format="JPEG")
+    # image_bytes = buffered.getvalue()
+    # # 生成模糊缩略图函数
+    # small_img = get_blurred_thumbnail(image_bytes)
+    # ---------
 
 
 # login 视图函数
@@ -156,20 +173,6 @@ def register_page():
     else:
         message = form.errors
         return restful.params_error(message=message)
-
-
-#  判断是否有cookie
-# @bp.get('/is_cookie')
-# def is_cookie():
-#     # 获取当前cookie中的user_id(session加密后的) --> 数据库中查找该ID的用户信息 --> 提取出来放入全局变量中
-#     if 'user_id' in session:
-#         user_id = session.get('user_id')
-#         user = UserModel.query.get(user_id)
-#         setattr(g, 'user', user)
-#         return restful.ok(data={"user": user.username})
-#     else:
-#         setattr(g, 'user', None)
-#         return restful.ok(data={"user": None})
 
 
 #  上传用户头像
@@ -236,7 +239,6 @@ def upload_image():
 def detail_image():
     #   前端提交的数据结构 {title: '手绘', detail: '表情包', filenames:  ['c819d.png', 'de77e22f.png']}
     form = UploadImageText(request.form)
-
     if form.validate():
         title = form.title.data
         detail = form.detail.data
@@ -245,10 +247,16 @@ def detail_image():
         for key in request.form.keys():
             if key.startswith('filenames['):
                 filenames.append(request.form[key])
-
         # 验证 filenames
         if not filenames:
             return restful.params_error(message="请上传图片！")
+        # 图片存储位置的字符串 "/Users/jpz/Desktop/flask/flaskProject4/media/img/43af.png"
+        small_image_path = os.path.join(current_app.config['BLURRED_IMAGE_SAVE_PATH'], filenames[0])
+        image_path = os.path.join(current_app.config['POST_IMAGE_SAVE_PATH'], filenames[0])
+        # 生成模糊缩略图函数
+        small_img = get_blurred_thumbnail(image_path)
+        # 存放模糊图路径
+        small_img.save(small_image_path)
         # 存储标题和描述
         img_text = ImageTextModel(title=title, detail=detail, author_id=g.user.id)
         db.session.add(img_text)
@@ -257,7 +265,6 @@ def detail_image():
         for image in filenames:
             img = ImageModel(filename=image, text_id=img_text.id)
             db.session.add(img)
-
         db.session.commit()
         return restful.ok()
     else:
@@ -265,11 +272,17 @@ def detail_image():
 
 
 # 首页--视图函数
-@bp.route('/home')
-def index():
+@bp.route('/home/<page>')
+def index(page):
+    page = int(page)  # 当前页数
+    per_count = current_app.config['PER_PAGE_COUNT']  # 每页几条
+    start = (page - 1) * per_count
+    end = start + per_count
     #  返回用户数据
     image_info_list = []
-    image_text_s = ImageTextModel.query.order_by(ImageTextModel.create_time.desc()).all()
+    image_text_model = ImageTextModel.query.order_by(ImageTextModel.create_time.desc())
+    image_all_count = image_text_model.count()
+    image_text_s = image_text_model.slice(start, end).all()
     # image_text_s ==》[<ImageTextModel 5>, <ImageTextModel 9>] 需要处理成下面格式
     # [{'username': '小红', 'title': '自然', 'detail': '生活', 'filename': ['4b8c2fe.jpg', '71487.jpeg']},
     # {'username': 'shu 属鼠', 'title': '油画', 'detail': '手绘', 'filename': ['b40810.jpg', 'ef5376a9b.JPG']},
@@ -280,7 +293,7 @@ def index():
             # 处理数据结构的自定义函数
             item = export_data(image_text, images)
             image_info_list.append(item)
-        return restful.ok(data=image_info_list)
+        return restful.ok(data={"image_info_list": image_info_list, "image_all_count": image_all_count})
     else:
         return restful.params_error(message="暂无数据！")
 
@@ -298,11 +311,7 @@ def user_picture(user_id):
     text_list = user.image_text  # 当前用户的详情列表 [<ImageTextModel 8>, <ImageTextModel 9>]
     for text in text_list:
         image_list = text.images  # 详情下图片列表  [<ImageModel 1>, <ImageModel 2>]
-    #  ----------------
-        item = export_data(text, image_list)
-
-
-    #  ----------------
+        item = export_data(text, image_list)  # 自定义函数，处理数据结构
         filenames = [image.filename for image in image_list]
         items = {
             "title": text.title,
@@ -341,7 +350,6 @@ def delete_post_image():
 @bp.post('/update/img')
 @login_required
 def update_post_image():
-    print(request.form)
     form = EditImageText(request.form)
     if form.validate():
         # ----- 验证 filenames数组
@@ -363,6 +371,14 @@ def update_post_image():
         title = form.title.data
         detail = form.detail.data
 
+        small_img_path = os.path.join(current_app.config['BLURRED_IMAGE_SAVE_PATH'], filenames[0])
+        if not os.path.exists(small_img_path):  # 如果当前路径下找不到该文件 （说明用户该专辑的首图 与 原来不同，需要重新生成缩略图）
+            # 生成模糊缩略图函数
+            image_path = os.path.join(current_app.config['POST_IMAGE_SAVE_PATH'], filenames[0])
+            small_img = get_blurred_thumbnail(image_path)
+            # 存放模糊图路径
+            small_img.save(small_img_path)
+
         post_img.title = title
         post_img.detail = detail
         for img in post_img.images:  # post_img.images ==》 [<ImageModel 18>, <ImageModel 19>]
@@ -381,7 +397,6 @@ def search_img():
 
     result = ImageTextModel.query.filter(or_(ImageTextModel.title.contains(q), ImageTextModel.detail.contains(q))).all()
     image_info_list = []
-    print("---- result ----", result)
     # result [<ImageTextModel 5>, <ImageTextModel 9>]
     if len(result) > 0:
         for imgTextmodel in result:
